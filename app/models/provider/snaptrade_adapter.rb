@@ -38,12 +38,14 @@ class Provider::SnaptradeAdapter < Provider::Base
     "snaptrade"
   end
 
-  # Build a SnapTrade provider instance for a family's authorized item
+  # Build a SnapTrade provider instance for a family's authorized item.
+  # An item is usable with either OAuth tokens or a personal API key pair
+  # (see Provider::Snaptrade#personal_key_mode?); no instance-level OAuth
+  # app configuration is required for the latter.
   # @param family [Family] The family to get an authorized item for (required)
-  # @return [Provider::Snaptrade, nil] Returns nil if OAuth is not configured/authorized
+  # @return [Provider::Snaptrade, nil] Returns nil if no configured item exists
   def self.build_provider(family: nil)
     return nil unless family.present?
-    return nil unless Provider::Snaptrade.oauth_configured?
 
     snaptrade_item = family.snaptrade_items.syncable.first
     return nil unless snaptrade_item

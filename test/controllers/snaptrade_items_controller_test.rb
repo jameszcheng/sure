@@ -556,6 +556,64 @@ class SnaptradeItemsControllerTest < ActionDispatch::IntegrationTest
     assert_redirected_to setup_accounts_snaptrade_item_path(@snaptrade_item)
   end
 
+  test "preload_accounts routes personal-key items to setup flow and queues sync" do
+    @snaptrade_item.update!(oauth_access_token: nil, oauth_refresh_token: nil)
+    personal = @user.family.snaptrade_items.create!(
+      name: "Personal", client_id: "test-client-id", consumer_key: "test-consumer-key"
+    )
+
+    assert_difference "Sync.count", 1 do
+      get preload_accounts_snaptrade_items_url
+    end
+
+    assert_redirected_to setup_accounts_snaptrade_item_path(personal)
+  end
+
+  test "select_accounts redirects personal-key users to setup flow" do
+    @snaptrade_item.update!(oauth_access_token: nil, oauth_refresh_token: nil)
+    personal = @user.family.snaptrade_items.create!(
+      name: "Personal", client_id: "test-client-id", consumer_key: "test-consumer-key"
+    )
+
+    get select_accounts_snaptrade_items_url, params: { accountable_type: "Investment", return_to: "/accounts" }
+
+    assert_redirected_to setup_accounts_snaptrade_item_path(personal, accountable_type: "Investment", return_to: "/accounts")
+  end
+
+  test "update_credentials saves a personal key pair" do
+    patch update_credentials_snaptrade_items_url,
+      params: { snaptrade_item: { client_id: "cid-1", consumer_key: "ckey-1" } }
+
+    assert_redirected_to settings_providers_path
+    assert_equal "cid-1", @snaptrade_item.reload.client_id
+    assert_equal "ckey-1", @snaptrade_item.consumer_key
+  end
+
+  test "update_credentials ignores blank fields so saved keys are never wiped" do
+    @snaptrade_item.update!(client_id: "cid-1", consumer_key: "ckey-1")
+
+    patch update_credentials_snaptrade_items_url,
+      params: { snaptrade_item: { client_id: "", consumer_key: "" } }
+
+    assert_redirected_to settings_providers_path
+    assert_equal "cid-1", @snaptrade_item.reload.client_id
+    assert_equal "ckey-1", @snaptrade_item.consumer_key
+  end
+
+  test "update_credentials creates the connection on first save" do
+    # Nil the fixture tokens first so destroy skips the (network) token revocation.
+    @snaptrade_item.update!(oauth_access_token: nil, oauth_refresh_token: nil)
+    @snaptrade_item.destroy!
+
+    patch update_credentials_snaptrade_items_url,
+      params: { snaptrade_item: { client_id: "cid-1", consumer_key: "ckey-1" } }
+
+    assert_redirected_to settings_providers_path
+    item = @user.family.snaptrade_items.active.first
+    assert_equal "cid-1", item.client_id
+    assert item.personal_key_configured?
+  end
+
   test "entry routing prefers a registered active item over a pending one" do
     pending_item = @user.family.snaptrade_items.create!(
       name: "Pending Registration",

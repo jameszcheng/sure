@@ -7,6 +7,12 @@ class SnaptradeItemTest < ActiveSupport::TestCase
     @family = families(:dylan_family)
   end
 
+  def personal_key_item
+    @personal_key_item ||= @family.snaptrade_items.create!(
+      name: "Personal", client_id: "test-client-id", consumer_key: "test-consumer-key"
+    )
+  end
+
   test "validates presence of name" do
     item = SnaptradeItem.new(family: @family)
     assert_not item.valid?
@@ -41,6 +47,22 @@ class SnaptradeItemTest < ActiveSupport::TestCase
     item.oauth_access_token = "test-access-token"
     assert_equal item.oauth_configured?, item.credentials_configured?
     assert item.credentials_configured?
+  end
+
+  test "personal_key_configured? needs both halves of the key pair" do
+    assert personal_key_item.personal_key_configured?
+    assert_not SnaptradeItem.new(family: @family, name: "Test", client_id: "cid").personal_key_configured?
+    assert_not SnaptradeItem.new(family: @family, name: "Test").personal_key_configured?
+  end
+
+  test "credentials_configured? accepts a personal key pair without oauth tokens" do
+    assert personal_key_item.credentials_configured?
+    assert personal_key_item.fully_configured?
+    assert_instance_of Provider::Snaptrade, personal_key_item.snaptrade_provider
+  end
+
+  test "syncable scope includes personal-key items" do
+    assert_includes SnaptradeItem.syncable, personal_key_item
   end
 
   test "an unlinked account awaiting activities does not keep the item syncing" do

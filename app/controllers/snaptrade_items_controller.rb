@@ -16,7 +16,7 @@ class SnaptradeItemsController < ApplicationController
   ].freeze
 
   before_action :set_snaptrade_item, only: [ :show, :destroy, :sync, :connect, :setup_accounts, :complete_account_setup, :connections, :delete_connection, :complete_oauth_device_flow ]
-  before_action :require_admin!, only: [ :destroy, :sync, :connect, :callback, :setup_accounts, :complete_account_setup, :connections, :delete_connection, :oauth_authorize, :oauth_callback, :oauth_device_authorize, :start_oauth_device_flow, :complete_oauth_device_flow, :preload_accounts, :select_accounts, :select_existing_account, :link_existing_account ]
+  before_action :require_admin!, only: [ :destroy, :sync, :connect, :callback, :setup_accounts, :complete_account_setup, :connections, :delete_connection, :oauth_authorize, :oauth_callback, :oauth_device_authorize, :start_oauth_device_flow, :complete_oauth_device_flow, :preload_accounts, :select_accounts, :select_existing_account, :link_existing_account, :update_credentials ]
 
   def index
     @snaptrade_items = Current.family.snaptrade_items.ordered
@@ -28,6 +28,23 @@ class SnaptradeItemsController < ApplicationController
   def destroy
     @snaptrade_item.destroy_later
     redirect_to settings_providers_path, notice: t(".success", default: "Scheduled SnapTrade connection for deletion.")
+  end
+
+  # Save a personal API key pair (Client ID + Consumer Key) on the connection.
+  # Unlike OAuth items, personal-key items need no authorize step: the key
+  # pair authenticates every data call directly. Creates the connection on
+  # first save so the form works before anything exists. Blank fields are
+  # ignored so submitting the form never wipes a stored key.
+  def update_credentials
+    @snaptrade_item = current_snaptrade_item ||
+      Current.family.snaptrade_items.create!(name: t("snaptrade_items.default_name"))
+
+    credentials = params.require(:snaptrade_item).permit(:client_id, :consumer_key).to_h.compact_blank
+    if @snaptrade_item.update(credentials)
+      redirect_to settings_providers_path, notice: t(".success", default: "SnapTrade API credentials saved.")
+    else
+      redirect_to settings_providers_path, alert: @snaptrade_item.errors.full_messages.to_sentence
+    end
   end
 
   def sync
@@ -95,7 +112,7 @@ class SnaptradeItemsController < ApplicationController
     latest_sync = @snaptrade_item.syncs.ordered.first
     should_sync = latest_sync.nil? || !latest_sync.completed?
 
-    if @snaptrade_item.oauth_configured? && no_accounts && !@snaptrade_item.syncing? && should_sync
+    if @snaptrade_item.credentials_configured? && no_accounts && !@snaptrade_item.syncing? && should_sync
       @snaptrade_item.sync_later
     end
 
@@ -428,7 +445,7 @@ class SnaptradeItemsController < ApplicationController
       return
     end
 
-    if snaptrade_item.oauth_configured?
+    if snaptrade_item.credentials_configured?
       snaptrade_item.sync_later_with_follow_up
       redirect_to setup_accounts_snaptrade_item_path(snaptrade_item)
     else
@@ -446,7 +463,7 @@ class SnaptradeItemsController < ApplicationController
       return
     end
 
-    if snaptrade_item.oauth_configured?
+    if snaptrade_item.credentials_configured?
       redirect_to setup_accounts_snaptrade_item_path(snaptrade_item, accountable_type: @accountable_type, return_to: @return_to)
     else
       redirect_to helpers.snaptrade_authorize_path(item_id: snaptrade_item.id, accountable_type: @accountable_type, return_to: @return_to)

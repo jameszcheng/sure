@@ -3,6 +3,8 @@ en:
     default_name: "SnapTrade Connection"
     destroy:
       success: "Scheduled SnapTrade connection for deletion."
+    update_credentials:
+      success: "SnapTrade API credentials saved."
     connect:
       decryption_failed: "Unable to read SnapTrade credentials. Please delete and recreate this connection."
       connection_failed: "Failed to connect to SnapTrade: %{message}"
@@ -152,6 +154,15 @@ en:
       oauth_connect_button: "Connect with SnapTrade"
       oauth_device_button: "Use a device code"
       oauth_reauthorize_button: "Reauthorize"
+      personal_key_title: "Personal API key"
+      personal_key_status_ready: "Connected with a personal SnapTrade API key. No OAuth setup needed."
+      personal_key_form_title: "Use a personal API key"
+      personal_key_form_description: "Paste the Client ID and Consumer Key from dashboard.snaptrade.com. Personal keys connect without OAuth: no user registration, no redirect URIs."
+      personal_key_client_id_label: "Client ID"
+      personal_key_client_id_placeholder: "PERS-…"
+      personal_key_consumer_key_label: "Consumer Key"
+      personal_key_consumer_key_placeholder: "Paste consumer key (leave blank to keep the saved one)"
+      personal_key_save_button: "Save credentials"
       status_connected:
         one: "%{count} account from SnapTrade"
         other: "%{count} accounts from SnapTrade"

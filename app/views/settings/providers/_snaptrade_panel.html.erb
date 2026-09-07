@@ -13,9 +13,10 @@
     redirect_flow_available = Provider::Snaptrade.authorization_code_configured?
     oauth_active = snaptrade_item&.oauth_token_active?
     oauth_item_id = snaptrade_item&.persisted? ? snaptrade_item.id : nil
+    personal_key_ready = snaptrade_item&.personal_key_configured?
   %>
 
-  <% if !oauth_env_configured %>
+  <% if !oauth_env_configured && !personal_key_ready %>
     <%= render "settings/providers/setup_steps",
                steps: [
                  t("providers.snaptrade.oauth_setup_step_1_html").html_safe,
@@ -23,6 +24,7 @@
                  t("providers.snaptrade.oauth_setup_step_3")
                ] %>
   <% else %>
+    <% if oauth_env_configured %>
     <div class="bg-surface-inset rounded-xl p-4 space-y-3">
       <div class="flex items-start gap-3">
         <span class="w-9 h-9 rounded-lg bg-success/10 flex items-center justify-center shrink-0">
@@ -72,8 +74,31 @@
         ) %>
       <% end %>
     </div>
+    <% elsif personal_key_ready %>
+    <div class="bg-surface-inset rounded-xl p-4 space-y-3">
+      <div class="flex items-start gap-3">
+        <span class="w-9 h-9 rounded-lg bg-success/10 flex items-center justify-center shrink-0">
+          <%= icon "key-round", class: "w-4 h-4 text-success" %>
+        </span>
+        <div class="min-w-0">
+          <p class="text-sm font-medium text-primary"><%= t("providers.snaptrade.personal_key_title") %></p>
+          <p class="text-sm text-secondary">
+            <%= t("providers.snaptrade.personal_key_status_ready") %>
+          </p>
+        </div>
+      </div>
 
-    <% if snaptrade_item&.persisted? && snaptrade_item.oauth_configured? %>
+      <%= render DS::Link.new(
+        text: t("providers.snaptrade.setup_accounts_button"),
+        icon: "external-link",
+        variant: :primary,
+        full_width: true,
+        href: setup_accounts_snaptrade_item_path(snaptrade_item)
+      ) %>
+    </div>
+    <% end %>
+
+    <% if snaptrade_item&.persisted? && snaptrade_item.credentials_configured? %>
       <div class="border-t border-primary pt-4 mt-4">
         <%# "Manage Connections" in the item menu links here with ?manage=1. %>
         <%# The row's auto-open reads and drops it, so open from the server. %>
@@ -111,6 +136,45 @@
 
             <div data-lazy-load-target="frame">
             </div>
+          </div>
+        <% end %>
+      </div>
+    <% end %>
+  <% end %>
+
+  <% unless personal_key_ready %>
+    <%= render DS::Disclosure.new(variant: :card_inset) do |disclosure| %>
+      <% disclosure.with_summary_content do %>
+        <div>
+          <p class="text-sm font-medium text-primary">
+            <%= t("providers.snaptrade.personal_key_form_title") %>
+          </p>
+          <p class="text-xs text-secondary mt-1">
+            <%= t("providers.snaptrade.personal_key_form_description") %>
+          </p>
+        </div>
+      <% end %>
+
+      <div class="mt-4 space-y-3">
+        <%= styled_form_with url: update_credentials_snaptrade_items_path,
+                             scope: :snaptrade_item,
+                             method: :patch,
+                             data: { turbo: true },
+                             class: "space-y-3" do |form| %>
+          <%= form.text_field :client_id,
+                              label: t("providers.snaptrade.personal_key_client_id_label"),
+                              placeholder: t("providers.snaptrade.personal_key_client_id_placeholder"),
+                              type: :password,
+                              value: nil %>
+
+          <%= form.text_field :consumer_key,
+                              label: t("providers.snaptrade.personal_key_consumer_key_label"),
+                              placeholder: t("providers.snaptrade.personal_key_consumer_key_placeholder"),
+                              type: :password,
+                              value: nil %>
+
+          <div class="flex justify-end">
+            <%= form.submit t("providers.snaptrade.personal_key_save_button") %>
           </div>
         <% end %>
       </div>

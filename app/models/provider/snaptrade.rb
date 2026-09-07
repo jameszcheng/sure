@@ -1,9 +1,9 @@
-# SnapTrade API client using SnapTrade OAuth apps (pre-release feature).
+# SnapTrade API client.
 #
-# Auth model:
-#   - Instance admin registers an OAuth app on dashboard.snaptrade.com and sets
-#     SNAPTRADE_OAUTH_CLIENT_ID (and, for the browser flow, SNAPTRADE_OAUTH_CLIENT_SECRET).
-#   - Users authorize through either grant, and both end at the same place:
+# Auth models:
+#   - OAuth apps (SNAPTRADE_OAUTH_CLIENT_ID, plus SNAPTRADE_OAUTH_CLIENT_SECRET
+#     for the browser flow). Users authorize through either grant, and both end
+#     at the same place:
 #       * authorization-code + PKCE -- a browser redirect. Needs a confidential
 #         client (client secret) and a registered redirect URI.
 #       * device code (RFC 8628) -- a user code confirmed on SnapTrade. Needs
@@ -13,6 +13,13 @@
 #     SnaptradeItem by #apply_oauth_tokens!.
 #   - Data calls send Authorization: Bearer <access_token>. The SnapTrade user
 #     is implicit in the token; there is no userId/userSecret.
+#   - Personal API keys (per-item client_id + consumer_key, no OAuth). The key
+#     pair authenticates every data call directly (HMAC-signed, same scheme as
+#     SnapTrade's official SDK): no registerUser, no userId/userSecret, no
+#     Bearer tokens. An item uses this mode when it holds a key pair but no
+#     usable OAuth token; a live OAuth token always wins.
+require "openssl"
+
 class Provider::Snaptrade
   class Error < StandardError; end
   # `oauth_error` carries the machine-readable `error` code from an OAuth error
@@ -358,7 +365,14 @@ class Provider::Snaptrade
     @snaptrade_item = snaptrade_item
   end
 
-  # --- Data methods. The SnapTrade user is implicit in the Bearer token. ---
+  # True when this item authenticates with a personal API key pair instead of
+  # OAuth: it holds client_id + consumer_key but no usable access token. A
+  # live OAuth token always wins, so existing OAuth items keep using Bearer.
+  def personal_key_mode?
+    snaptrade_item.personal_key_configured? && !snaptrade_item.oauth_token_active?
+  end
+
+  # --- Data methods. In OAuth mode the SnapTrade user is implicit in the ---
 
   # Returns Array<Hash> of brokerage accounts
   def list_accounts
@@ -440,6 +454,8 @@ class Provider::Snaptrade
     end
 
     def request_json(method, path, params: {}, body: nil, retry_on_auth_failure: true)
+      return request_json_personal_key(method, path, params: params, body: body) if personal_key_mode?
+
       ensure_fresh_token!
       operation = "#{method.to_s.upcase} #{path}"
       used_access_token = snaptrade_item.oauth_access_token
@@ -466,6 +482,57 @@ class Provider::Snaptrade
       end
 
       handle_response(response, operation)
+    end
+
+    # Personal-key data calls: the key pair authenticates the request itself
+    # (HMAC-signed, same scheme as SnapTrade's official SDK), so there is no
+    # Bearer token and no token refresh. A 401/403 here means the key pair
+    # itself is rejected.
+    def request_json_personal_key(method, path, params: {}, body: nil)
+      keypair = { client_id: snaptrade_item.client_id, consumer_key: snaptrade_item.consumer_key }
+      if keypair.values.any?(&:blank?)
+        raise AuthenticationError, "SnapTrade item has no API credentials"
+      end
+
+      operation = "#{method.to_s.upcase} #{path}"
+      # Only GET is safe to retry: a lost response to a POST/DELETE (e.g.
+      # get_connection_url, delete_connection) may already have been applied by
+      # SnapTrade, so replaying it risks duplicate side effects.
+      retrier = method == :get ? method(:with_retries) : method(:without_retry)
+      response = retrier.call(operation) do
+        api_connection.public_send(method, "#{API_BASE_URL}#{path}") do |request|
+          request.headers["Accept"] = "application/json"
+          request.params.update(params) if params.present?
+          if body
+            request.headers["Content-Type"] = "application/json"
+            request.body = body.to_json
+          end
+          sign_personal_key_request!(request, path, keypair)
+        end
+      end
+
+      if response.status == 401 || response.status == 403
+        mark_requires_update!
+        raise AuthenticationError, "Authentication failed (#{operation}): HTTP #{response.status}"
+      end
+
+      handle_response(response, operation)
+    end
+
+    # Signs a request with a personal API key pair, mirroring SnapTrade's
+    # official SDK request hook: clientId + timestamp go in the query string
+    # (clientId first, exactly as the SDK orders them), and the Signature
+    # header is Base64(HMAC-SHA256) over a canonical JSON document of
+    # {content, path, query}. The signature is computed from the request's
+    # final params so it always covers exactly the query string that is sent.
+    def sign_personal_key_request!(request, path, keypair)
+      request.params["clientId"] = keypair[:client_id]
+      request.params["timestamp"] = Time.now.to_i
+      query = Faraday::Utils.build_query(request.params)
+      content = request.body.present? ? JSON.parse(request.body).sort.to_h : nil
+      sig_content = JSON.generate({ "content" => content, "path" => path, "query" => query })
+      digest = OpenSSL::HMAC.digest(OpenSSL::Digest::SHA256.new, keypair[:consumer_key], sig_content)
+      request.headers["Signature"] = Base64.strict_encode64(digest).strip
     end
 
     def ensure_fresh_token!

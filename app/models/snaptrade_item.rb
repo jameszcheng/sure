@@ -33,17 +33,24 @@ class SnaptradeItem < ApplicationRecord
   has_many :linked_accounts, through: :snaptrade_accounts
 
   scope :active, -> { where(scheduled_for_deletion: false) }
-  # Syncable = active + authorized via OAuth (has an access token).
+  # Syncable = active + authorized. That means either an OAuth access token
+  # or a personal API key pair (client_id + consumer_key).
   # oauth_access_token is non-deterministically encrypted, so it can only be
   # queried with an IS NULL check (never persisted as "" -- see apply_oauth_tokens!).
-  scope :syncable, -> { active.where.not(oauth_access_token: nil) }
+  # client_id/consumer_key are deterministically encrypted (or plaintext when
+  # encryption is off), so they support blank checks like any normal column.
+  scope :syncable, -> {
+    active.where.not(oauth_access_token: nil).or(
+      active.where.not(client_id: [ nil, "" ]).where.not(consumer_key: [ nil, "" ])
+    )
+  }
   scope :ordered, -> { order(created_at: :desc) }
   scope :needs_update, -> { where(status: :requires_update) }
 
   def import_latest_snaptrade_data(sync: nil)
     provider = snaptrade_provider
     unless provider
-      Rails.logger.error "SnaptradeItem #{id} - Cannot import: OAuth not authorized"
+      Rails.logger.error "SnaptradeItem #{id} - Cannot import: SnapTrade is not authorized"
       raise StandardError, "SnapTrade is not authorized"
     end
 
@@ -180,10 +187,20 @@ class SnaptradeItem < ApplicationRecord
   def oauth_configured?
     oauth_access_token.present?
   end
-  alias_method :credentials_configured?, :oauth_configured?
+
+  # Personal API keys authenticate with the key pair alone: no OAuth tokens,
+  # no SnapTrade user, no Bearer flow. client_id/consumer_key are the whole
+  # credential (stored encrypted when ActiveRecord encryption is on).
+  def personal_key_configured?
+    client_id.present? && consumer_key.present?
+  end
+
+  def credentials_configured?
+    oauth_configured? || personal_key_configured?
+  end
 
   def fully_configured?
-    oauth_configured?
+    credentials_configured?
   end
 
   # Override Syncable#syncing? to also show syncing state when activities are being
