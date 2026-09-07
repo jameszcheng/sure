@@ -116,6 +116,15 @@ class LlmUsage < ApplicationRecord
       },
       "gemini-2.5-flash" => { prompt: 0.30, completion: 2.50 }
     },
+    # DeepSeek pricing per 1M tokens (V4 family, peak rates as of Aug 2026)
+    # Source: https://api-docs.deepseek.com/quick_start/pricing
+    # Input rate is the cache-miss price; cache hits bill at ~3% of that.
+    # Off-peak rates are exactly half of peak (peak: 01:00-04:00 & 06:00-10:00 UTC Mon-Fri).
+    "deepseek" => {
+      "deepseek-v4-flash" => { prompt: 0.44, completion: 1.32 },
+      "deepseek-v4-flash-vision-exp" => { prompt: 0.44, completion: 1.32 },
+      "deepseek-v4-pro" => { prompt: 1.32, completion: 3.96 }
+    },
     # Source: https://platform.claude.com/docs/en/about-claude/pricing
     "anthropic" => {
       "claude-opus-4-7" => { prompt: 5.00, completion: 25.00 },
