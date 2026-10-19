@@ -1,0 +1,15 @@
+# Test override — ALWAYS use this when running the test suite:
+#
+#   docker compose -f compose.yml -f compose.test.yml run --rm web bin/rails test
+#
+# Why: config/database.yml derives the TEST database name from POSTGRES_DB,
+# and compose.yml sets POSTGRES_DB=sure_production. Without this override,
+# "RAILS_ENV=test" runs target the production database: fixtures overwrite
+# real data (incident 2026-10-12) and db:test:prepare tries to purge it.
+services:
+  web:
+    environment:
+      POSTGRES_DB: sure_test
+  worker:
+    environment:
+      POSTGRES_DB: sure_test
