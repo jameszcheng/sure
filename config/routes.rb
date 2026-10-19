@@ -443,6 +443,7 @@ Rails.application.routes.draw do
     get :merge, on: :collection
     post :perform_merge, on: :collection
     post :bootstrap, on: :collection
+    patch :toggle_lock, on: :collection
     delete :destroy_all, on: :collection
   end
 
@@ -655,6 +656,7 @@ Rails.application.routes.draw do
 
     collection do
       delete :destroy_all
+      patch :reorder
       get :confirm_all
       post :apply_all
       post :clear_ai_cache
@@ -704,6 +706,9 @@ Rails.application.routes.draw do
 
       get :address
       patch :update_address
+
+      post :refresh_valuation
+      post :link_valuation
     end
   end
   resources :vehicles, only: %i[new create edit update]
@@ -758,7 +763,9 @@ Rails.application.routes.draw do
       resources :security_prices, only: [ :index, :show ]
       resources :tags, only: [ :index, :show, :create, :update, :destroy ]
 
-      resources :transactions, only: [ :index, :show, :create, :update, :destroy ]
+      resources :transactions, only: [ :index, :show, :create, :update, :destroy ] do
+        resource :split, only: [ :show, :create, :update, :destroy ]
+      end
       resources :trades, only: [ :index, :show, :create, :update, :destroy ]
       resources :holdings, only: [ :index, :show ]
       resources :transfers, only: [ :index, :show ]
