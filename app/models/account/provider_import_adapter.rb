@@ -246,8 +246,19 @@ class Account::ProviderImportAdapter
       if Transaction::INTERNAL_MOVEMENT_LABELS.include?(detected_label)
         auto_kind = "funds_movement"
       elsif detected_label == "Contribution"
-        auto_kind = "investment_contribution"
-        auto_category = account.family.investment_contributions_category
+        if payroll_deposit?(name)
+          # Providers such as SnapTrade report every deposit into an investment
+          # account as a generic "CONTRIBUTION" cash activity, so a paycheck
+          # landing directly in a brokerage would import as an
+          # investment_contribution — hard-classified as an expense by
+          # IncomeStatement, which hides the family's salary entirely.
+          # Payroll is income regardless of which account receives it.
+          auto_kind = "standard"
+          auto_category = account.family.income_category
+        else
+          auto_kind = "investment_contribution"
+          auto_category = account.family.investment_contributions_category
+        end
       elsif account.accountable_type == "Loan" && entry.amount.negative?
         auto_kind = "loan_payment"
       end
@@ -1070,6 +1081,12 @@ class Account::ProviderImportAdapter
   end
 
   private
+
+    # Direct payroll deposits carry PAYROLL/SALARY in the provider's
+    # description (e.g. "DIRECT DEPOSIT ACME CORP SPAYROLL (Cash ...)").
+    def payroll_deposit?(name)
+      name.to_s.match?(/PAYROLL|SALARY/i)
+    end
 
     # The latest earlier holding of the security the provider reports. A
     # remapped row records that security in provider_security_id; an

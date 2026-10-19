@@ -557,6 +557,23 @@ class Family < ApplicationRecord
     end
   end
 
+  # Returns the Income category for this family, creating it if it doesn't
+  # exist. Used for auto-categorizing payroll deposits that providers report
+  # as generic investment "Contribution" activities.
+  def income_category
+    I18n.with_locale(locale) do
+      categories.find_or_create_by!(name: I18n.t("models.category.defaults.income")) do |cat|
+        cat.color = "#22c55e"
+        cat.lucide_icon = "circle-dollar-sign"
+      end
+    end
+  rescue ActiveRecord::RecordNotUnique, ActiveRecord::RecordInvalid
+    # Handle race condition: another process created the category
+    I18n.with_locale(locale) do
+      categories.find_by!(name: I18n.t("models.category.defaults.income"))
+    end
+  end
+
   # Returns account IDs for tax-advantaged accounts (401k, IRA, HSA, etc.)
   # Used to exclude these accounts from budget/cashflow calculations.
   # Tax-advantaged accounts are retirement savings, not daily expenses.
